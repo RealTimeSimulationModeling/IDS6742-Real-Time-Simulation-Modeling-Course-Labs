@@ -1,4 +1,4 @@
-# Lab 8-9: Digital Twin with Real-Time IoT Integration
+# "IDS 6742 — Real-Time Simulation Modeling for Digital Twins" Labs: Digital Twin with Real-Time IoT Integration
 
 **Course:** IDS 6742 — Real-Time Simulation Modeling for Digital Twins
 **Instructor:** Bulent Soykan ([soykanb@gmail.com](mailto:soykanb@gmail.com))
