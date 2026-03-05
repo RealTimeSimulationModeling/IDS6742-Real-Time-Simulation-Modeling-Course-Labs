@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IDS6742 — Machine Speed Controller (FIXED)</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;600;800&display=swap');
+
+  :root {
+    --bg:         #0a0d12;
+    --panel:      #111620;
+    --border:     #1e2a3a;
+    --accent:     #00e5ff;
+    --accent2:    #ff4b4b;
+    --accent3:    #39ff14;
+    --text:       #cdd9e8;
+    --muted:      #4a5568;
+    --glow:       0 0 20px rgba(0,229,255,0.35);
+    --glow-green: 0 0 18px rgba(57,255,20,0.4);
+    --glow-red:   0 0 18px rgba(255,75,75,0.4);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 32px 20px;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(0,229,255,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 90%, rgba(57,255,20,0.04) 0%, transparent 50%);
+  }
+
+  header {
+    width: 100%;
+    max-width: 780px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 32px;
+  }
+
+  .tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    opacity: 0.7;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1;
+    color: #fff;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    font-size: 1rem;
+    font-weight: 300;
+    color: var(--muted);
+    margin-top: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .grid {
+    width: 100%;
+    max-width: 780px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 580px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+
+  .card.full { grid-column: 1 / -1; }
+  .card.red-accent::before  { background: var(--accent2); }
+  .card.green-accent::before { background: var(--accent3); }
+
+  .card-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .field label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .field input {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  .field input:focus { border-color: var(--accent); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s, box-shadow 0.3s;
+    flex-shrink: 0;
+  }
+
+  .dot.connected    { background: var(--accent3); box-shadow: var(--glow-green); }
+  .dot.disconnected { background: var(--accent2); box-shadow: var(--glow-red);   }
+  .dot.connecting   { background: var(--accent);  box-shadow: var(--glow); animation: pulse 0.9s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  #status-text { color: var(--text); }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; }
+
+  button {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 1px solid;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 10px 22px;
+    transition: all 0.15s;
+    flex: 1;
+  }
+
+  #btn-connect {
+    background: transparent;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #btn-connect:hover { background: var(--accent); color: var(--bg); box-shadow: var(--glow); }
+
+  #btn-disconnect {
+    background: transparent;
+    border-color: var(--muted);
+    color: var(--muted);
+  }
+  #btn-disconnect:hover { border-color: var(--accent2); color: var(--accent2); }
+  #btn-disconnect:disabled { opacity: 0.3; cursor: default; }
+
+  .speed-display {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 20px 0 18px;
+  }
+
+  .speed-value {
+    font-size: 5rem;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    text-shadow: var(--glow);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: -2px;
+  }
+
+  .speed-unit {
+    font-size: 1.2rem;
+    color: var(--muted);
+    font-weight: 300;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .slider-wrap { position: relative; margin-bottom: 10px; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--pct, 50%), var(--border) var(--pct, 50%));
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: var(--glow);
+    border: none;
+  }
+
+  .range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  .speed-value.slow   { color: var(--accent3);  text-shadow: var(--glow-green); }
+  .speed-value.medium { color: var(--accent);   text-shadow: var(--glow); }
+  .speed-value.fast   { color: #ff9800; text-shadow: 0 0 20px rgba(255,152,0,0.4); }
+  .speed-value.danger { color: var(--accent2);  text-shadow: var(--glow-red); }
+
+  #btn-estop {
+    width: 100%;
+    padding: 18px;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 4px;
+    background: rgba(255,75,75,0.12);
+    border: 2px solid var(--accent2);
+    color: var(--accent2);
+    margin-top: 6px;
+  }
+
+  #btn-estop:hover {
+    background: var(--accent2);
+    color: #fff;
+    box-shadow: var(--glow-red);
+  }
+
+  #log {
+    height: 200px;
+    overflow-y: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    color: var(--muted);
+    padding: 4px 0;
+  }
+
+  .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(30,42,58,0.4); }
+  .log-entry.pub   { color: var(--accent3); }
+  .log-entry.warn  { color: #ff9800; }
+  .log-entry.error { color: var(--accent2); }
+  .log-entry.info  { color: var(--accent); }
+
+  .topic-display {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    padding: 10px 14px;
+    background: #0a0d12;
+    border: 1px dashed var(--border);
+    border-radius: 3px;
+    word-break: break-all;
+    margin-top: 12px;
+  }
+
+  .stat-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+  }
+
+  .stat {
+    flex: 1;
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 1.6rem;
+    color: var(--accent);
+  }
+
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .diagnostic {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: rgba(255,152,0,0.1);
+    border: 1px solid #ff9800;
+    border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #ff9800;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">IDS6742 / Spring 2026 / Digital Twin Lab (FIXED)</div>
+  <h1>Machine <span>Speed</span> Controller</h1>
+  <div class="subtitle">Bi-directional MQTT controller → AnyLogic Digital Twin</div>
+</header>
+
+<div class="grid">
+  <div class="card full">
+    <div class="card-label">🔌 Broker Connection</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Broker Host</label>
+        <input type="text" id="inp-host" value="localhost">
+      </div>
+      <div class="field">
+        <label>WebSocket Port</label>
+        <input type="text" id="inp-port" value="8083">
+      </div>
+      <div class="field">
+        <label>UCF ID</label>
+        <input type="text" id="inp-ucfid" value="ab123456" placeholder="ab123456">
+      </div>
+      <div class="field">
+        <label>Client ID suffix</label>
+        <input type="text" id="inp-clientid" value="controller">
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="dot disconnected" id="status-dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-connect" onclick="doConnect()">Connect</button>
+      <button id="btn-disconnect" onclick="doDisconnect()" disabled>Disconnect</button>
+    </div>
+
+    <div class="topic-display" id="topic-display">
+      ids6742/spring26/[UCF_ID]/speed
+    </div>
+
+    <div class="diagnostic" id="diagnostic" style="display:none;">
+      <strong>⚠ Connection Diagnostic:</strong><br>
+      <span id="diag-text"></span>
+    </div>
+  </div>
+
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-label">⚙️ Spindle Speed Control → AnyLogic</div>
+    <div class="speed-display">
+      <div class="speed-value medium" id="speed-display">1600</div>
+      <div class="speed-unit">RPM</div>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="speed-slider" min="0" max="4000" value="1600" step="50" oninput="onSliderMove(this.value)" onchange="onSliderRelease(this.value)">
+    </div>
+    <div class="range-labels">
+      <span>0 RPM — STOP</span>
+      <span>2000</span>
+      <span>4000 RPM — MAX</span>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="stat-num" id="stat-sent">0</div><div class="stat-label">Messages Sent</div></div>
+      <div class="stat"><div class="stat-num" id="stat-speed">1600</div><div class="stat-label">Last RPM Sent</div></div>
+    </div>
+  </div>
+
+  <div class="card red-accent">
+    <div class="card-label">🛑 Emergency Stop</div>
+    <button id="btn-estop" onclick="emergencyStop()">⚡ E-STOP</button>
+  </div>
+
+  <div class="card green-accent">
+    <div class="card-label">🎛️ Speed Presets</div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <button onclick="setSpeed(0)" style="border:1px solid var(--border); color:var(--text); background:transparent;">IDLE — 0 RPM</button>
+      <button onclick="setSpeed(1600)" style="border:1px solid var(--accent); color:var(--accent); background:transparent;">MED — 1600 RPM</button>
+      <button onclick="setSpeed(3200)" style="border:1px solid #ff9800; color:#ff9800; background:transparent;">HIGH — 3200 RPM</button>
+    </div>
+  </div>
+
+  <div class="card full">
+    <div class="card-label">📡 Publish Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+  let client = null;
+  let sentCount = 0;
+  let connected = false;
+
+  function getTopic(suffix) {
+    const ucfid = document.getElementById('inp-ucfid').value.trim() || 'unknown';
+    return `ids6742/spring26/${ucfid}/${suffix}`;
+  }
+
+  function refreshTopicDisplay() {
+    document.getElementById('topic-display').textContent = getTopic('speed');
+  }
+
+  function log(msg, cls = '') {
+    const el = document.getElementById('log');
+    const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const div = document.createElement('div');
+    div.className = `log-entry ${cls}`;
+    div.textContent = `[${now}] ${msg}`;
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+    while (el.children.length > 100) el.removeChild(el.firstChild);
+  }
+
+  function setStatus(state, text) {
+    document.getElementById('status-dot').className = `dot ${state}`;
+    document.getElementById('status-text').textContent = text;
+  }
+
+  function showDiagnostic(msg) {
+    const diag = document.getElementById('diagnostic');
+    const text = document.getElementById('diag-text');
+    text.innerHTML = msg;
+    diag.style.display = 'block';
+  }
+
+  function hideDiagnostic() {
+    document.getElementById('diagnostic').style.display = 'none';
+  }
+
+  function paintSlider(val) {
+    const slider = document.getElementById('speed-slider');
+    const pct = (val / slider.max) * 100;
+    slider.style.setProperty('--pct', `${pct}%`);
+  }
+
+  function updateDisplay(val) {
+    const el = document.getElementById('speed-display');
+    el.textContent = val;
+    let cls = 'medium';
+    if (val == 0) cls = 'slow';
+    else if (val > 3000) cls = 'danger';
+    else if (val > 2000) cls = 'fast';
+    el.className = `speed-value ${cls}`;
+  }
+
+  function onSliderMove(val) {
+    updateDisplay(val);
+    paintSlider(val);
+  }
+
+  function onSliderRelease(val) {
+    publishSpeed(val, 'RUNNING');
+  }
+
+  function setSpeed(rpm) {
+    document.getElementById('speed-slider').value = rpm;
+    onSliderMove(rpm);
+    publishSpeed(rpm, 'RUNNING');
+  }
+
+  function emergencyStop() {
+    setSpeed(0);
+    publishSpeed(0, 'STOPPED');
+    log('🛑 E-STOP sent', 'error');
+  }
+
+  function publishSpeed(rpm, status) {
+    if (!connected || !client) {
+      log('⚠ Not connected', 'warn');
+      return;
+    }
+    const payload = JSON.stringify({
+      timestamp: Date.now(),
+      speed_rpm: parseInt(rpm),
+      status: status,
+      source: 'SpeedController_WebUI'
+    });
+    const msg = new Paho.MQTT.Message(payload);
+    msg.destinationName = getTopic('speed');
+    msg.qos = 1;
+    msg.retained = true;
+    try {
+      client.send(msg);
+      sentCount++;
+      document.getElementById('stat-sent').textContent = sentCount;
+      document.getElementById('stat-speed').textContent = rpm;
+      log(`📤 RPM: ${rpm} Status: ${status}`, 'pub');
+    } catch(e) {
+      log(`❌ Send error: ${e.message}`, 'error');
+    }
+  }
+
+  function doConnect() {
+    const host = document.getElementById('inp-host').value.trim();
+    const port = parseInt(document.getElementById('inp-port').value.trim());
+    const ucfid = document.getElementById('inp-ucfid').value.trim() || 'unknown';
+    const clientId = `UCF_${ucfid}_ctrl_${Math.floor(Math.random()*9999)}`;
+
+    log(`🔌 Connecting to ${host}:${port}...`, 'info');
+    setStatus('connecting', 'Connecting...');
+    hideDiagnostic();
+
+    // Determine SSL based on host and port
+    let useSSL = false;
+    if (host === 'test.mosquitto.org' && port === 8081) {
+      useSSL = true;
+      log('Using WSS (secure WebSocket)', 'info');
+    } else if (host === 'localhost' && port === 8083) {
+      useSSL = false;
+      log('Using WS (local WebSocket)', 'info');
+    } else {
+      // Auto-detect: 8081 usually means WSS
+      useSSL = (port === 8081);
+      log(`Auto-detect SSL: ${useSSL}`, 'info');
+    }
+
+    client = new Paho.MQTT.Client(host, port, "/mqtt", clientId);
+
+    client.onConnectionLost = (res) => {
+      connected = false;
+      setStatus('disconnected', 'Disconnected');
+      log(`⚡ Lost: ${res.errorMessage}`, 'warn');
+      document.getElementById('btn-connect').disabled = false;
+      document.getElementById('btn-disconnect').disabled = true;
+    };
+
+    const options = {
+      timeout: 10,
+      useSSL: useSSL,
+      cleanSession: true,
+      onSuccess: () => {
+        connected = true;
+        setStatus('connected', 'Connected');
+        log('✅ Connected!', 'info');
+        hideDiagnostic();
+        document.getElementById('btn-connect').disabled = true;
+        document.getElementById('btn-disconnect').disabled = false;
+        publishSpeed(document.getElementById('speed-slider').value, 'RUNNING');
+      },
+      onFailure: (err) => {
+        setStatus('disconnected', 'Failed');
+        log(`❌ Error: ${err.errorMessage}`, 'error');
+        
+        // Show diagnostic
+        let diagMsg = `Connection failed to ${host}:${port}<br>`;
+        if (host === 'localhost' && port === 8083) {
+          diagMsg += `<br><strong>Checklist for localhost:8083:</strong><br>`;
+          diagMsg += `1. Is Mosquitto running?<br>`;
+          diagMsg += `&nbsp;&nbsp; Windows: services.msc → Mosquitto Broker → Start<br>`;
+          diagMsg += `&nbsp;&nbsp; macOS: brew services start mosquitto<br>`;
+          diagMsg += `&nbsp;&nbsp; Linux: sudo systemctl start mosquitto<br>`;
+          diagMsg += `2. Does mosquitto.conf have these lines?<br>`;
+          diagMsg += `&nbsp;&nbsp; listener 8083<br>`;
+          diagMsg += `&nbsp;&nbsp; protocol websockets<br>`;
+          diagMsg += `3. Restart Mosquitto after editing the config<br>`;
+          diagMsg += `4. Check firewall allows port 8083`;
+        } else if (host === 'test.mosquitto.org') {
+          diagMsg += `<br><strong>Public broker issue:</strong><br>`;
+          diagMsg += `The public test.mosquitto.org may be down or overloaded.<br>`;
+          diagMsg += `Try switching to localhost if you have Mosquitto installed.`;
+        }
+        showDiagnostic(diagMsg);
+      }
+    };
+
+    client.connect(options);
+  }
+
+  function doDisconnect() {
+    if (client) {
+      client.disconnect();
+      connected = false;
+      setStatus('disconnected', 'Disconnected');
+      document.getElementById('btn-connect').disabled = false;
+      document.getElementById('btn-disconnect').disabled = true;
+      log('🔌 Disconnected by user', 'info');
+    }
+  }
+
+  document.getElementById('inp-ucfid').addEventListener('input', refreshTopicDisplay);
+  document.getElementById('inp-host').addEventListener('input', refreshTopicDisplay);
+  paintSlider(1600);
+  refreshTopicDisplay();
+
+  // Auto-log startup info
+  log('Controller initialized. Configure connection and click Connect.', 'info');
+</script>
+</body>
+</html>
